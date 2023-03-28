@@ -1,16 +1,13 @@
 #include "imports/stdlib.fc";
 
-;;
-;; Storage
-;;
-;; microusd_per_ton: uint32
-;;          example: 2.3232 USD -> 2323200
-;; interest_rate: uint16
-;;          example: 1% -> 100
-;; last_update: uint64
-;; vaults: Hashmap(address: uint267 -> Vault)
-;;          Vault
 
+;; storage#_ microusd_per_ton: uint32  // 2.3232 USD -> 2323200
+;;     interest_rate: uint16  // 1% -> 100
+;;     last_update: uint64
+;;     vaults: (HashmapE 267 Vault)
+;;     jetton_master_address: MsgAddressInt
+;;     jetton_wallet_code: ^Cell
+;;     = Storage;
 
 (int, int, int, cell, slice, cell) load_data() {
     slice ds = get_data().begin_parse();
@@ -31,4 +28,5 @@
     }
 
     slice sender_address = cs~load_msg_addr();
+    (int microusd_per_ton, int interest_rate, int last_update, cell vaults, slice jetton_master_address, cell jetton_wallet_code) = load_data();
 }
