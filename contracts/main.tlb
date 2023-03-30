@@ -6,8 +6,10 @@ vault#_ dcr: uint16  // 0.76 -> 760
 
 storage#_ microusd_per_ton: uint32  // 2.3232 USD -> 2323200
     interest_rate: uint16  // 1% -> 100
+    min_cr: uint16  // 1.5 -> 1500
     last_update: uint64
     vaults: (HashmapE 267 Vault)
+    oracle_address: MsgAddressInt
     jetton_master_address: MsgAddressInt
     jetton_wallet_code: ^Cell
     = Storage;
