@@ -2,7 +2,6 @@
 
 
 ;; storage#_ microusd_per_ton: uint32  // 2.3232 USD -> 2323200
-;;     interest_rate: uint16  // 1% -> 100
 ;;     min_cr: uint16  // 1.5 -> 1500
 ;;     last_update: uint64
 ;;     vaults: (HashmapE 267 Vault)
@@ -14,10 +13,9 @@
 const int op::update_price = 0x1;
 const int op::borrow = 0x2;
 
-(int, int, int, int, cell, slice, slice, cell) load_data() inline {
+(int, int, int, cell, slice, slice, cell) load_data() inline {
     slice ds = get_data().begin_parse();
     return (ds~load_uint(32),
-            ds~load_uint(16),
             ds~load_uint(16),
             ds_load_uint(64),
             ds~load_dict(),
@@ -26,10 +24,9 @@ const int op::borrow = 0x2;
             ds~load_ref());
 }
 
-() save_data(int microusd_per_ton, int interest_rate, int min_cr, int last_update, cell vaults, slice oracle_address, slice jetton_master_address, cell jetton_wallet_code) impure {
+() save_data(int microusd_per_ton, int min_cr, int last_update, cell vaults, slice oracle_address, slice jetton_master_address, cell jetton_wallet_code) impure {
     set_data(begin_cell()
         .store_uint(microusd_per_ton, 32)
-        .store_uint(interest_rate, 16)
         .store_uint(min_cr, 16)
         .store_uint(last_update, 64)
         .store_dict(vaults)
@@ -39,29 +36,56 @@ const int op::borrow = 0x2;
         .end_cell());
 }
 
-cell filter_by_dcr(cell vaults, int min_dcr) {
-    ;; TODO: тут функция отсортировки по dcr. Только для MVP.
-    ;; не предусмотрена ликвидация более 250 залогов.
-    int s = true;
-    while (s) {
-        filter_by_dcr
-    }
+() liquidate_collateral(int addr_int, slice vault_sliced) impure { }
+
+cell filter_by_dcr(cell vaults, int min_dcr) impure inline {
+    ;; Only for MVP.
+    ;; Liquidation of more than 250 vaults is not supported.
+    ;; Also can run out of gas.
+
+    int prev_addr = 0;
+    do {
+        (prev_addr, slice vault, int s) = vaults.udict_get_next?(267, prev_addr);
+        if (s) {
+            int dcr = vault.load_uint(16);
+            if (dcr <= min_dcr) {
+                liquidate_collateral(prev_addr, vault);
+                vaults~udict_delete?(267, prev_addr);
+            }
+        }
+    } while (s);
+
+    return vaults;
 }
 
 () update_price_from_oracle(slice in_msg_body, slice sender_address) {
-    (int microusd_per_ton, int interest_rate, int min_cr, int last_update, cell vaults, slice oracle_address, slice jetton_master_address, cell jetton_wallet_code) = load_data();
+    (int microusd_per_ton, int min_cr, int last_update, cell vaults, slice oracle_address, slice jetton_master_address, cell jetton_wallet_code) = load_data();
 
     throw_unless(600, equal_slices?(sender_address, oracle_address));
 
     int query_id = in_msg_body~load_uint(64);
-    int new_microusd_per_ton = in_msg_body~load_uint(64);
+    int microusd_per_ton = in_msg_body~load_uint(64);
 
-    int new_min_dcr = min_cr * 1000 / new_microusd_per_ton
+    int min_dcr = min_cr * 1000 / microusd_per_ton
 
-    microusd_per_ton = price;
+    vaults~filter_by_dcr(min_dcr);
+
     last_update = now();
-    save_data(microusd_per_ton, interest_rate, mint_cr, last_update, vaults, oracle_address, jetton_master_address, jetton_wallet_code);
-    send_msg(oracle_address, begin_cell().store_uint(query_id, 64).end_cell());
+
+    save_data(microusd_per_ton, min_cr, last_update, vaults, oracle_address, jetton_master_address, jetton_wallet_code);
+
+    return ();
+}
+
+() borrow(slice in_msg_body, slice sender_address) {
+    (int microusd_per_ton, int min_cr, int last_update, cell vaults, slice oracle_address, slice jetton_master_address, cell jetton_wallet_code) = load_data();
+    int sender_address_int = sender_address.load_uint(267);
+
+    (slice vault, int there?) = vaults.udict_get?(267, sender_address_int);
+    int (dcr, collateral, debt) = there?
+          ? (vault~load_uint(16), vault~load_coins(), vault~load_coins())
+          : (0, 0, 0);
+    int
 }
 
 () recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
@@ -77,11 +101,10 @@ cell filter_by_dcr(cell vaults, int min_dcr) {
     int op = in_msg_body~load_uint(32);
 
     if (op == op::update_price) {
-        update_price_from_oracle(in_msg_body, sender_address);
-        return ();
+        return update_price_from_oracle(in_msg_body, sender_address);
     }
 
     if (op == op::borrow) {
-        
+        return borrow(in_msg_body, sender_address);
     }
 }
