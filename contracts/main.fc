@@ -1,4 +1,5 @@
 #include "imports/stdlib.fc";
+#include "ft/op-codes.fc";
 
 
 ;; storage#_ microusd_per_ton: uint32  // 2.3232 USD -> 2323200
@@ -13,11 +14,17 @@
 const int op::update_price = 0x1;
 const int op::borrow = 0x2;
 
+;; taken from head, will be approximately calculated
+const int borrow_fees = 100000000; ;; 0.1 TON
+const int jetton_fee_1 = 50000000; ;; 0.05 TON
+const int jetton_fee_2 = 25000000; ;; 0.025 TON
+const int jetton_fee_3 = 10000000; ;; 0.01 TON
+
 (int, int, int, cell, slice, slice, cell) load_data() inline {
     slice ds = get_data().begin_parse();
     return (ds~load_uint(32),
             ds~load_uint(16),
-            ds_load_uint(64),
+            ds~load_uint(64),
             ds~load_dict(),
             ds~load_msg_addr(),
             ds~load_msg_addr(),
@@ -30,15 +37,15 @@ const int op::borrow = 0x2;
         .store_uint(min_cr, 16)
         .store_uint(last_update, 64)
         .store_dict(vaults)
-        .store_msg_addr(oracle_address)
-        .store_msg_addr(jetton_master_address)
+        .store_slice(oracle_address)
+        .store_slice(jetton_master_address)
         .store_ref(jetton_wallet_code)
         .end_cell());
 }
 
 () liquidate_collateral(int addr_int, slice vault_sliced) impure { }
 
-cell filter_by_dcr(cell vaults, int min_dcr) impure inline {
+(cell, ()) filter_by_dcr(cell vaults, int min_dcr) impure inline {
     ;; Only for MVP.
     ;; Liquidation of more than 250 vaults is not supported.
     ;; Also can run out of gas.
@@ -47,26 +54,26 @@ cell filter_by_dcr(cell vaults, int min_dcr) impure inline {
     do {
         (prev_addr, slice vault, int s) = vaults.udict_get_next?(267, prev_addr);
         if (s) {
-            int dcr = vault.load_uint(16);
-            if (dcr <= min_dcr) {
+            int dcr = vault~load_uint(16);
+            if ( (dcr <= min_dcr) | (dcr == 0) ) {
                 liquidate_collateral(prev_addr, vault);
                 vaults~udict_delete?(267, prev_addr);
             }
         }
-    } while (s);
+    } until (~ s);
 
-    return vaults;
+    return (vaults, ());
 }
 
-() update_price_from_oracle(slice in_msg_body, slice sender_address) {
+() update_price_from_oracle (slice in_msg_body, slice sender_address) {
     (int microusd_per_ton, int min_cr, int last_update, cell vaults, slice oracle_address, slice jetton_master_address, cell jetton_wallet_code) = load_data();
 
-    throw_unless(600, equal_slices?(sender_address, oracle_address));
+    throw_unless(600, equal_slices(sender_address, oracle_address));
 
     int query_id = in_msg_body~load_uint(64);
     int microusd_per_ton = in_msg_body~load_uint(64);
 
-    int min_dcr = min_cr * 1000 / microusd_per_ton
+    int min_dcr = min_cr * 1000000 / microusd_per_ton;
 
     vaults~filter_by_dcr(min_dcr);
 
@@ -77,16 +84,160 @@ cell filter_by_dcr(cell vaults, int min_dcr) impure inline {
     return ();
 }
 
-() borrow(slice in_msg_body, slice sender_address) {
+() mint_tokens (slice jetton_master_address, slice to_address, int query_id, int jetton_amount) impure inline {
+    cell msg = begin_cell()
+            .store_uint(0x18, 6)
+            .store_slice(jetton_master_address)
+            .store_coins(jetton_fee_1) ;; to send to master
+            .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+            .store_uint(op::mint, 32) ;; FIXME
+            .store_uint(query_id, 64)
+            .store_slice(to_address)
+            .store_coins(jetton_fee_2) ;; to send to wallet
+            .store_ref(
+                begin_cell()
+                    .store_uint(op::internal_transfer, 32)
+                    .store_uint(query_id, 64)
+                    .store_coins(jetton_amount)
+                    .store_uint(0, 2) ;; from_address null
+                    .store_uint(0, 2) ;; response_address null
+                    .store_coins(jetton_fee_3) ;; to send to owner
+                    .store_bit(false) ;; forward_payload in this slice, not separate cell
+                .end_cell())
+            .end_cell();
+
+    send_raw_message(msg, 0);
+    return ();
+}
+
+() borrow (slice sender_address, slice in_msg_body, int msg_value) impure {
     (int microusd_per_ton, int min_cr, int last_update, cell vaults, slice oracle_address, slice jetton_master_address, cell jetton_wallet_code) = load_data();
-    int sender_address_int = sender_address.load_uint(267);
+    int sender_address_int = sender_address.preload_uint(267);
+    int query_id = in_msg_body~load_uint(64);
 
     (slice vault, int there?) = vaults.udict_get?(267, sender_address_int);
-    int (dcr, collateral, debt) = there?
+
+    int (_, collateral, debt) = there?
           ? (vault~load_uint(16), vault~load_coins(), vault~load_coins())
           : (0, 0, 0);
-    int
+
+    int jetton_amount = in_msg_body~load_coins();
+    debt += jetton_amount;
+    collateral += msg_value - borrow_fees;
+
+    int dcr = 1000 * collateral / debt;
+    int cr = dcr * microusd_per_ton / 1000000;
+
+    throw_if(601, cr < min_cr);
+
+    cell new_vault = begin_cell()
+                  .store_uint(dcr, 16)
+                  .store_coins(collateral)
+                  .store_coins(debt)
+                .end_cell();
+
+    mint_tokens(jetton_master_address, sender_address, query_id, jetton_amount);
+
+    vaults~udict_set(267, sender_address_int, new_vault.begin_parse());
+
+    save_data(microusd_per_ton, min_cr, last_update, vaults, oracle_address, jetton_master_address, jetton_wallet_code);
+    return ();
 }
+
+() decline_repay_request(int error_code, slice sender_address, int jetton_amount, int query_id) impure {
+    cell msg = begin_cell()
+            .store_uint(0x18, 6)
+            .store_slice(sender_addr)
+            .store_coins(0)
+            .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+            .store_uint(op::repay_decline, 32)
+            .store_uint(query_id, 64)
+            .store_uint(error_code, 32)
+            .store_coins(jetton_amount)
+           .end_cell()
+
+    send_raw_message(msg, 64);
+}
+
+() return_collateral (slice sender_address, slice in_msg_body, int msg_value, int fwd_fee) impure {
+    (int microusd_per_ton, int min_cr, int last_update, cell vaults, slice oracle_address, slice jetton_master_address, cell jetton_wallet_code) = load_data();
+
+    int query_id = in_msg_body~load_uint(64);
+    slice to_address = in_msg_body.load_msg_addr();
+
+    throw_unless(602, equal_slices(calculate_user_jetton_wallet_address(to_address, my_address(), jetton_master_address, jetton_wallet_code),
+                      sender_address));
+
+    int jetton_amount = in_msg_body~load_coins();
+    int tons_wanted = in_msg_body~load_coins();
+
+    int to_address_int = to_address.preload_uint(267);
+    (slice vault, int there?) = vaults.udict_get?(267, to_address_int);
+
+    if (~ there?) {
+        decline_repay_request(1, sender_address, jetton_amount, query_id);
+        return ();
+    }
+
+    int (_, collateral, debt) = (vault~load_uint(16), vault~load_coins(), vault~load_coins());
+
+    debt -= jetton_amount;
+    collateral -= tons_wanted;
+
+    if (debt == 0) {
+        if (collateral == 0) {
+            int dcr = 0;
+        } else {
+            decline_repay_request(2, sender_address, jetton_amount, query_id);
+            return ();
+        }
+    } else {
+        int dcr = 1000 * collateral / debt
+        int cr = dcr * microusd_per_ton / 1000000
+        if (cr < min_cr) {
+            decline_repay_request(3, sender_address, jetton_amount, query_id);
+            return ();
+        }
+    }
+
+    cell new_vault = begin_cell()
+                  .store_uint(dcr, 16)
+                  .store_coins(collateral)
+                  .store_coins(debt)
+                .end_cell();
+
+    vaults~udict_set(267, sender_address_int, new_vault.begin_parse());
+    save_data(microusd_per_ton, min_cr, last_update, vaults, oracle_address, jetton_master_address, jetton_wallet_code);
+
+    tons_wanted -= jetton_fee_2;
+
+    cell msg_to_owner = begin_cell()
+              .store_uint(0x10, 6)
+              .store_slice(to_address)
+              .store_coins(tons_wanted)
+              .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+              .store_uint(op::repayed_collateral, 32)
+              .store_uint(query_id, 64)
+            .end_cell()
+
+    send_raw_message(msg_to_owner, 2);
+
+    cell msg_to_wallet = begin_cell()
+              .store_uint(0x18, 6)
+              .store_slice(sender_addr)
+              .store_coins(jetton_fee_2)
+              .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+              .store_uint(op::repay_approve, 32)
+              .store_uint(query_id, 64)
+              .store_uint(error_code, 32)
+              .store_coins(jetton_amount)
+            .end_cell()
+
+    send_raw_message(msg_to_wallet, 64)
+
+    return ();
+}
+    
 
 () recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
     slice cs = in_msg_full.begin_parse();
@@ -98,6 +249,12 @@ cell filter_by_dcr(cell vaults, int min_dcr) impure inline {
 
     slice sender_address = cs~load_msg_addr();
 
+    cs~load_msg_addr(); ;; skip dst
+    cs~load_coins(); ;; skip value
+    cs~skip_bits(1); ;; skip extracurrency collection
+    cs~load_coins(); ;; skip ihr_fee
+    int fwd_fee = cs~load_coins(); ;; we use message fwd_fee for estimation of forward_payload costs
+
     int op = in_msg_body~load_uint(32);
 
     if (op == op::update_price) {
@@ -105,6 +262,10 @@ cell filter_by_dcr(cell vaults, int min_dcr) impure inline {
     }
 
     if (op == op::borrow) {
-        return borrow(in_msg_body, sender_address);
+        return borrow(sender_address, in_msg_body, msg_value);
+    }
+
+    if (op == op::return_collateral) {
+        return return_collateral(sender_address, in_msg_body, msg_value, fwd_fee);
     }
 }

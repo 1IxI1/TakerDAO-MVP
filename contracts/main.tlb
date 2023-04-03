@@ -11,3 +11,14 @@ storage#_ microusd_per_ton: uint32  // 2.3232 USD -> 2323200
     jetton_master_address: MsgAddressInt
     jetton_wallet_code: ^Cell
     = Storage;
+
+return_collateral query_id: uint64
+    to_address: MsgAddressInt
+    jetton_amount: Coins
+    tons_wanted: Coins
+    = InternalMsgBody;
+
+repay_decline query_id: uint64
+    error_code: uint32
+    jetton_amount: Coins
+    = InternalMsgBody;
