@@ -5,7 +5,7 @@
 ;; storage#_ microusd_per_ton: uint32  // 2.3232 USD -> 2323200
 ;;     min_cr: uint16  // 1.5 -> 1500
 ;;     last_update: uint64
-;;     vaults: (HashmapE 267 Vault)
+;;     vaults: (HashmapE 256 Vault)
 ;;     oracle_address: MsgAddressInt
 ;;     jetton_master_address: MsgAddressInt
 ;;     jetton_wallet_code: ^Cell
@@ -13,6 +13,7 @@
 
 const int op::update_price = 0x1;
 const int op::borrow = 0x2;
+const int op::init = 0x5;
 
 ;; taken from head, will be approximately calculated
 const int borrow_fees = 100000000; ;; 0.1 TON
@@ -43,21 +44,21 @@ const int jetton_fee_3 = 10000000; ;; 0.01 TON
         .end_cell());
 }
 
-() liquidate_collateral(int addr_int, slice vault_sliced) impure { }
+() liquidate_collateral(int addr_int, slice vault_sliced, int query_id) impure { }
 
-(cell, ()) filter_by_dcr(cell vaults, int min_dcr) impure inline {
+(cell, ()) filter_by_dcr(cell vaults, int min_dcr, int query_id) impure {
     ;; Only for MVP.
     ;; Liquidation of more than 250 vaults is not supported.
     ;; Also can run out of gas.
 
     int prev_addr = 0;
     do {
-        (prev_addr, slice vault, int s) = vaults.udict_get_next?(267, prev_addr);
+        (prev_addr, slice vault, int s) = vaults.udict_get_next?(256, prev_addr);
         if (s) {
             int dcr = vault~load_uint(16);
             if ( (dcr <= min_dcr) | (dcr == 0) ) {
-                liquidate_collateral(prev_addr, vault);
-                vaults~udict_delete?(267, prev_addr);
+                liquidate_collateral(prev_addr, vault, query_id);
+                vaults~udict_delete?(256, prev_addr);
             }
         }
     } until (~ s);
@@ -65,21 +66,25 @@ const int jetton_fee_3 = 10000000; ;; 0.01 TON
     return (vaults, ());
 }
 
-() update_price_from_oracle (slice in_msg_body, slice sender_address) {
+() update_price_from_oracle (slice in_msg_body, slice sender_address) impure {
     (int microusd_per_ton, int min_cr, int last_update, cell vaults, slice oracle_address, slice jetton_master_address, cell jetton_wallet_code) = load_data();
 
     throw_unless(600, equal_slices(sender_address, oracle_address));
 
     int query_id = in_msg_body~load_uint(64);
-    int microusd_per_ton = in_msg_body~load_uint(64);
+    int new_microusd_per_ton = in_msg_body~load_uint(64);
 
-    int min_dcr = min_cr * 1000000 / microusd_per_ton;
+    if (microusd_per_ton == new_microusd_per_ton) {
+        return ();
+    }
 
-    vaults~filter_by_dcr(min_dcr);
+    int min_dcr = min_cr * 1000000 / new_microusd_per_ton;
+
+    vaults~filter_by_dcr(min_dcr, query_id);
 
     last_update = now();
 
-    save_data(microusd_per_ton, min_cr, last_update, vaults, oracle_address, jetton_master_address, jetton_wallet_code);
+    save_data(new_microusd_per_ton, min_cr, last_update, vaults, oracle_address, jetton_master_address, jetton_wallet_code);
 
     return ();
 }
@@ -112,10 +117,10 @@ const int jetton_fee_3 = 10000000; ;; 0.01 TON
 
 () borrow (slice sender_address, slice in_msg_body, int msg_value) impure {
     (int microusd_per_ton, int min_cr, int last_update, cell vaults, slice oracle_address, slice jetton_master_address, cell jetton_wallet_code) = load_data();
-    int sender_address_int = sender_address.preload_uint(267);
+    int sender_address_int = sender_address.skip_bits(11).preload_uint(256);
     int query_id = in_msg_body~load_uint(64);
 
-    (slice vault, int there?) = vaults.udict_get?(267, sender_address_int);
+    (slice vault, int there?) = vaults.udict_get?(256, sender_address_int);
 
     var (_, collateral, debt) = there?
           ? (vault~load_uint(16), vault~load_coins(), vault~load_coins())
@@ -128,7 +133,11 @@ const int jetton_fee_3 = 10000000; ;; 0.01 TON
     int dcr = 1000 * collateral / debt;
     int cr = dcr * microusd_per_ton / 1000000;
 
-    throw_if(601, cr < min_cr);
+    ~dump(dcr);
+    ~dump(min_cr);
+    ~dump(cr);
+
+    throw_unless(601, cr > min_cr);
 
     cell new_vault = begin_cell()
                   .store_uint(dcr, 16)
@@ -138,7 +147,7 @@ const int jetton_fee_3 = 10000000; ;; 0.01 TON
 
     mint_tokens(jetton_master_address, sender_address, query_id, jetton_amount);
 
-    vaults~udict_set(267, sender_address_int, new_vault.begin_parse());
+    vaults~udict_set(256, sender_address_int, new_vault.begin_parse());
 
     save_data(microusd_per_ton, min_cr, last_update, vaults, oracle_address, jetton_master_address, jetton_wallet_code);
     return ();
@@ -171,8 +180,8 @@ const int jetton_fee_3 = 10000000; ;; 0.01 TON
     int jetton_amount = in_msg_body~load_coins();
     int tons_wanted = in_msg_body~load_coins();
 
-    int to_address_int = to_address.preload_uint(267);
-    (slice vault, int there?) = vaults.udict_get?(267, to_address_int);
+    int to_address_int = to_address.skip_bits(11).preload_uint(256);
+    (slice vault, int there?) = vaults.udict_get?(256, to_address_int);
 
     if (~ there?) {
         decline_repay_request(1, sender_address, jetton_amount, query_id);
@@ -204,7 +213,7 @@ const int jetton_fee_3 = 10000000; ;; 0.01 TON
                   .store_coins(debt)
                 .end_cell();
 
-    vaults~udict_set(267, to_address_int, new_vault.begin_parse());
+    vaults~udict_set(256, to_address_int, new_vault.begin_parse());
     save_data(microusd_per_ton, min_cr, last_update, vaults, oracle_address, jetton_master_address, jetton_wallet_code);
 
     tons_wanted -= jetton_fee_2;
@@ -254,6 +263,18 @@ const int jetton_fee_3 = 10000000; ;; 0.01 TON
 
     int op = in_msg_body~load_uint(32);
 
+    if (op == op::init) {
+        ;; set jetton master address. because it need to store an address of this contract, and so be deployed after this.
+        in_msg_body~skip_bits(64); ;; no outcoming msgs - don't needed query_id
+
+        (int microusd_per_ton, int min_cr, int last_update, cell vaults, slice oracle_address, slice jetton_master_address, cell jetton_wallet_code) = load_data();
+
+        ;; make sure null address in jetton master
+        throw_unless(603, jetton_master_address~load_uint(2) == 0);
+        save_data(microusd_per_ton, min_cr, last_update, vaults, oracle_address, in_msg_body~load_msg_addr(), jetton_wallet_code);
+        return ();
+    }
+
     if (op == op::update_price) {
         return update_price_from_oracle(in_msg_body, sender_address);
     }
@@ -265,4 +286,16 @@ const int jetton_fee_3 = 10000000; ;; 0.01 TON
     if (op == op::return_collateral) {
         return return_collateral(sender_address, in_msg_body, msg_value, fwd_fee);
     }
+
+    throw(0xffff);
+}
+
+
+(int, slice) get_vault(slice owner_address) method_id {
+    ;; returns (-1, vault) if vault is present in storage
+    ;; and (0, null) otherwise
+    (int microusd_per_ton, int min_cr, int last_update, cell vaults, slice oracle_address, slice jetton_master_address, cell jetton_wallet_code) = load_data();
+    int address_hashpart = owner_address.skip_bits(11).preload_uint(256);
+    (slice vault, int there?) = vaults.udict_get?(256, address_hashpart);
+    return (there?, vault);
 }

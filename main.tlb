@@ -6,11 +6,15 @@ vault#_ dcr: uint16  // 0.76 -> 760
 storage#_ microusd_per_ton: uint32  // 2.3232 USD -> 2323200
     min_cr: uint16  // 1.5 -> 1500
     last_update: uint64
-    vaults: (HashmapE 267 Vault)
+    vaults: (HashmapE 256 Vault)
     oracle_address: MsgAddressInt
     jetton_master_address: MsgAddressInt
     jetton_wallet_code: ^Cell
     = Storage;
+
+repay query_id: uint64 jetton_amount: Coins tons_wanted: Coins = InternalMsgBody;
+
+repay_approve query_id: uint64 jetton_amount: Coins = InternalMsgBody;
 
 return_collateral query_id: uint64
     to_address: MsgAddressInt
@@ -23,5 +27,7 @@ repay_decline query_id: uint64
     jetton_amount: Coins
     = InternalMsgBody;
 
-repay_approve query_id: uint64 jetton_amount: Coins = InternalMsgBody;
+borrow query_id: uint64 jetton_amount: Coins = InternalMsgBody;
 
+// IDEA: use Coins instead of uint64 for storing ton price
+update_price query_id: uint64 microusd_per_ton: uint64 = InternalMsgBody;
