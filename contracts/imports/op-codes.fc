@@ -1,0 +1,16 @@
+int op::transfer() asm "0xf8a7ea5 PUSHINT";
+int op::transfer_notification() asm "0x7362d09c PUSHINT";
+int op::internal_transfer() asm "0x178d4519 PUSHINT";
+int op::excesses() asm "0xd53276db PUSHINT";
+int op::burn() asm "0x595f07bc PUSHINT";
+int op::burn_notification() asm "0x7bdd97de PUSHINT";
+
+;; Minter
+int op::mint() asm "21 PUSHINT";
+
+const int op::repay = 0x3;
+const int op::return_collateral = 0x30;
+const int op::repay_approve = 0x31;
+const int op::repay_decline = 0x32;
+const int op::repayed_collateral = 0x4;
+const int op::repay_declined_notification = 0x13;

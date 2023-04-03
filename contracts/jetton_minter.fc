@@ -1,8 +1,8 @@
 ;; Jettons minter smart contract
 
-#include "../imports/stdlib.fc";
-#include "op-codes.fc";
-#include "jetton-utils.fc";
+#include "imports/stdlib.fc";
+#include "imports/op-codes.fc";
+#include "imports/jetton-utils.fc";
 
 ;; storage scheme
 ;; storage#_ total_supply:Coins admin_address:MsgAddress content:^Cell jetton_wallet_code:^Cell = Storage;
@@ -27,8 +27,8 @@
           );
 }
 
-() mint_tokens(slice to_address, cell jetton_wallet_code, int amount, cell master_msg) impure {
-  cell state_init = calculate_jetton_wallet_state_init(to_address, my_address(), jetton_wallet_code);
+() mint_tokens(slice to_address, slice main_contract_address, cell jetton_wallet_code, int amount, cell master_msg) impure {
+  cell state_init = calculate_jetton_wallet_state_init(to_address, main_contract_address, my_address(), jetton_wallet_code);
   slice to_wallet_address = calculate_jetton_wallet_address(state_init);
   var msg = begin_cell()
     .store_uint(0x18, 6)
@@ -65,7 +65,7 @@
         slice master_msg_cs = master_msg.begin_parse();
         master_msg_cs~skip_bits(32 + 64); ;; op + query_id
         int jetton_amount = master_msg_cs~load_coins();
-        mint_tokens(to_address, jetton_wallet_code, amount, master_msg);
+        mint_tokens(to_address, admin_address, jetton_wallet_code, amount, master_msg);
         save_data(total_supply + jetton_amount, admin_address, content, jetton_wallet_code);
         return ();
     }
@@ -74,7 +74,7 @@
         int jetton_amount = in_msg_body~load_coins();
         slice from_address = in_msg_body~load_msg_addr();
         throw_unless(74,
-            equal_slices(calculate_user_jetton_wallet_address(from_address, my_address(), jetton_wallet_code), sender_address)
+            equal_slices(calculate_user_jetton_wallet_address(from_address, admin_address, my_address(), jetton_wallet_code), sender_address)
         );
         save_data(total_supply - jetton_amount, admin_address, content, jetton_wallet_code);
         slice response_address = in_msg_body~load_msg_addr();
@@ -114,5 +114,5 @@
 
 slice get_wallet_address(slice owner_address) method_id {
     (int total_supply, slice admin_address, cell content, cell jetton_wallet_code) = load_data();
-    return calculate_user_jetton_wallet_address(owner_address, my_address(), jetton_wallet_code);
+    return calculate_user_jetton_wallet_address(owner_address, admin_address, my_address(), jetton_wallet_code);
 }

@@ -1,9 +1,9 @@
 ;; Jetton Wallet Smart Contract
 
-#include "../imports/stdlib.fc";
-#include "op-codes.fc";
-#include "params.fc";
-#include "jetton-utils.fc";
+#include "imports/stdlib.fc";
+#include "imports/op-codes.fc";
+#include "imports/params.fc";
+#include "imports/jetton-utils.fc";
 
 {-
 
@@ -57,7 +57,7 @@ int gas_consumption() asm "10000000 PUSHINT"; ;; 0.01 TON
   throw_unless(705, equal_slices(owner_address, sender_address));
   throw_unless(706, balance >= 0);
 
-  cell state_init = calculate_jetton_wallet_state_init(to_owner_address, jetton_master_address, jetton_wallet_code);
+  cell state_init = calculate_jetton_wallet_state_init(to_owner_address, main_contract_address, jetton_master_address, jetton_wallet_code);
   slice to_wallet_address = calculate_jetton_wallet_address(state_init);
   slice response_address = in_msg_body~load_msg_addr();
   cell custom_payload = in_msg_body~load_dict();
@@ -93,7 +93,7 @@ int gas_consumption() asm "10000000 PUSHINT"; ;; 0.01 TON
                      ;; msg_fwd_fee(to_wallet, msg_body, state_init, 15)
 
   send_raw_message(msg.end_cell(), 64); ;; revert on errors
-  save_data(balance, owner_address, jetton_master_address, jetton_wallet_code);
+  save_data(balance, owner_address, main_contract_address, jetton_master_address, jetton_wallet_code);
 }
 
 {-
@@ -116,7 +116,7 @@ int gas_consumption() asm "10000000 PUSHINT"; ;; 0.01 TON
   throw_unless(707,
       equal_slices(jetton_master_address, sender_address)
       |
-      equal_slices(calculate_user_jetton_wallet_address(from_address, jetton_master_address, jetton_wallet_code), sender_address)
+      equal_slices(calculate_user_jetton_wallet_address(from_address, main_contract_address, jetton_master_address, jetton_wallet_code), sender_address)
   );
   int forward_ton_amount = in_msg_body~load_coins();
 
@@ -156,7 +156,7 @@ int gas_consumption() asm "10000000 PUSHINT"; ;; 0.01 TON
     send_raw_message(msg.end_cell(), 2);
   }
 
-  save_data(balance, owner_address, jetton_master_address, jetton_wallet_code);
+  save_data(balance, owner_address, main_contract_address, jetton_master_address, jetton_wallet_code);
 }
 
 () burn_tokens (slice in_msg_body, slice sender_address, int msg_value, int fwd_fee) impure {
@@ -190,7 +190,7 @@ int gas_consumption() asm "10000000 PUSHINT"; ;; 0.01 TON
 
   send_raw_message(msg.end_cell(), 64);
 
-  save_data(balance, owner_address, jetton_master_address, jetton_wallet_code);
+  save_data(balance, owner_address, main_contract_address, jetton_master_address, jetton_wallet_code);
 }
 
 () repay (slice in_msg_body, slice sender_address, int msg_value, int fwd_fee) impure { ;; request
@@ -224,7 +224,7 @@ int gas_consumption() asm "10000000 PUSHINT"; ;; 0.01 TON
 
   send_raw_message(msg.end_cell(), 64);
 
-  save_data(balance, owner_address, jetton_master_address, jetton_wallet_code);
+  save_data(balance, owner_address, main_contract_address, jetton_master_address, jetton_wallet_code);
 }
 
 () repay_approve (slice in_msg_body, slice sender_address, int msg_value, int fwd_fee) impure {
@@ -255,7 +255,7 @@ int gas_consumption() asm "10000000 PUSHINT"; ;; 0.01 TON
 
   send_raw_message(msg.end_cell(), 64);
 
-  save_data(balance, owner_address, jetton_master_address, jetton_wallet_code);
+  save_data(balance, owner_address, main_contract_address, jetton_master_address, jetton_wallet_code);
 }
 
 () repay_decline (slice in_msg_body, slice sender_address, int msg_value, int fwd_fee) impure {
@@ -287,7 +287,7 @@ int gas_consumption() asm "10000000 PUSHINT"; ;; 0.01 TON
 
   send_raw_message(msg.end_cell(), 64);
 
-  save_data(balance, owner_address, jetton_master_address, jetton_wallet_code);
+  save_data(balance, owner_address, main_contract_address, jetton_master_address, jetton_wallet_code);
 }
     
 
@@ -296,10 +296,10 @@ int gas_consumption() asm "10000000 PUSHINT"; ;; 0.01 TON
   (int balance, slice owner_address, slice main_contract_address, slice jetton_master_address, cell jetton_wallet_code) = load_data();
   int op = in_msg_body~load_uint(32);
   throw_unless(709, (op == op::internal_transfer()) | (op == op::burn_notification()));
-  int query_id = in_msg_body~load_uint(64);Если вдруг есть у кого вакансии full-stack разработчика (Node.js, Reactjs, etc), готов общаться. 
+  int query_id = in_msg_body~load_uint(64);
   int jetton_amount = in_msg_body~load_coins();
   balance += jetton_amount;
-  save_data(balance, owner_address, jetton_master_address, jetton_wallet_code);
+  save_data(balance, owner_address, main_contract_address, jetton_master_address, jetton_wallet_code);
 }
 
 () recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
@@ -357,5 +357,5 @@ int gas_consumption() asm "10000000 PUSHINT"; ;; 0.01 TON
 
 (int, slice, slice, cell) get_wallet_data() method_id {
   (int balance, slice owner_address, slice main_contract_address, slice jetton_master_address, cell jetton_wallet_code) = load_data();
-  return (balance, owner_address, jetton_master_address, jetton_wallet_code)
+  return (balance, owner_address, jetton_master_address, jetton_wallet_code);
 }

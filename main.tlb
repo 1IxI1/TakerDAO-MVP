@@ -22,3 +22,6 @@ repay_decline query_id: uint64
     error_code: uint32
     jetton_amount: Coins
     = InternalMsgBody;
+
+repay_approve query_id: uint64 jetton_amount: Coins = InternalMsgBody;
+
