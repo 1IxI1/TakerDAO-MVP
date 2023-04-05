@@ -1,11 +1,5 @@
 import { Address, beginCell, Cell, Contract, contractAddress, ContractProvider, Sender, SendMode } from 'ton-core';
 
-export type PseudoAuctionConfig = {};
-
-export function pseudoAuctionConfigToCell(config: PseudoAuctionConfig): Cell {
-    return beginCell().endCell();
-}
-
 export class PseudoAuction implements Contract {
     constructor(readonly address: Address, readonly init?: { code: Cell; data: Cell }) {}
 
@@ -13,17 +7,21 @@ export class PseudoAuction implements Contract {
         return new PseudoAuction(address);
     }
 
-    static createFromConfig(config: PseudoAuctionConfig, code: Cell, workchain = 0) {
-        const data = pseudoAuctionConfigToCell(config);
+    static createFromCode(code: Cell, workchain = 0) {
+        const data = beginCell().endCell();
         const init = { code, data };
         return new PseudoAuction(contractAddress(workchain, init), init);
     }
 
-    async sendDeploy(provider: ContractProvider, via: Sender, value: bigint) {
+    async sendDeploy(provider: ContractProvider, via: Sender, jettonMinterAddress: Address, amount: bigint) {
         await provider.internal(via, {
-            value,
+            value: amount,
             sendMode: SendMode.PAY_GAS_SEPARATELY,
-            body: beginCell().endCell(),
+            body: beginCell()
+                    .storeUint(0x29, 32) // OP init
+                    .storeUint(0, 64) // query id
+                    .storeAddress(jettonMinterAddress)
+                  .endCell(),
         });
     }
 }

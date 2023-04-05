@@ -7,6 +7,7 @@ import { Address, beginCell, Cell, Contract, contractAddress, ContractProvider, 
 //     oracle_address: MsgAddressInt
 //     jetton_master_address: MsgAddressInt
 //     jetton_wallet_code: ^Cell
+//     pseudo_auction_code: ^Cell
 //     = Storage;
 
 export type MainConfig = {
@@ -16,6 +17,7 @@ export type MainConfig = {
     minCollateralRatio: number,
     oracle: Address,
     jettonWalletCode: Cell,
+    pseudoAuctionCode: Cell,
     now: number
 };
 
@@ -57,6 +59,7 @@ export function mainConfigToCell(config: MainConfig): Cell {
             .storeAddress(config.oracle)
             .storeAddress(null)
             .storeRef(config.jettonWalletCode)
+            .storeRef(config.pseudoAuctionCode)
            .endCell();
 }
 
@@ -73,14 +76,14 @@ export class Main implements Contract {
         return new Main(contractAddress(workchain, init), init);
     }
 
-    async sendDeploy(provider: ContractProvider, via: Sender, jettonMasterAddress: Address, value: bigint) {
+    async sendDeploy(provider: ContractProvider, via: Sender, jettonMinterAddress: Address, value: bigint) {
         await provider.internal(via, {
             value,
             sendMode: SendMode.PAY_GAS_SEPARATELY,
             body: beginCell()
-                    .storeUint(0x5, 32) // OP init
+                    .storeUint(0x29, 32) // OP init
                     .storeUint(0, 64) // query id
-                    .storeAddress(jettonMasterAddress)
+                    .storeAddress(jettonMinterAddress)
                     .endCell(),
         });
     }

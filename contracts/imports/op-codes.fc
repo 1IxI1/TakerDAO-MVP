@@ -8,9 +8,13 @@ int op::burn_notification() asm "0x7bdd97de PUSHINT";
 ;; Minter
 int op::mint() asm "21 PUSHINT";
 
+const int op::init = 0x29;
 const int op::repay = 0x3;
 const int op::return_collateral = 0x30;
 const int op::repay_approve = 0x31;
 const int op::repay_decline = 0x32;
 const int op::repayed_collateral = 0x4;
 const int op::repay_declined_notification = 0x13;
+const int op::sell_collateral = 0x5;
+const int op::burned_on_auction = 0x51;
+const int op::sold_collateral_rest = 0x52;

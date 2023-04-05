@@ -10,6 +10,7 @@ storage#_ microusd_per_ton: uint32  // 2.3232 USD -> 2323200
     oracle_address: MsgAddressInt
     jetton_master_address: MsgAddressInt
     jetton_wallet_code: ^Cell
+    pseudo_auction_code: ^Cell
     = Storage;
 
 repay query_id: uint64 jetton_amount: Coins tons_wanted: Coins = InternalMsgBody;
@@ -31,3 +32,11 @@ borrow query_id: uint64 jetton_amount: Coins = InternalMsgBody;
 
 // IDEA: use Coins instead of uint64 for storing ton price
 update_price query_id: uint64 microusd_per_ton: uint64 = InternalMsgBody;
+
+sell_collateral query_id: uint64
+    microusd_per_ton: uint64 
+    debt_to_cover: Coins
+    collateral_owner_address: MsgAddressInt
+    = InternalMsgBody;
+
+burned_on_auction query_id: uint64 jetton_amount: Coins = InternalMsgBody;

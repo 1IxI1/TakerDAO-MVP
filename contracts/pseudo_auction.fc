@@ -1,5 +1,84 @@
 #include "imports/stdlib.fc";
+#include "imports/op-codes.fc";
 
-() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
 
+() recv_internal(int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    slice cs = in_msg_full.begin_parse();
+    int flags = cs~load_uint(4);
+
+    if (flags & 1) { ;; ignore all bounced messages
+        return ();
+    }
+
+    slice sender_address = cs~load_msg_addr();
+
+    cs~load_msg_addr(); ;; skip dst
+    cs~load_coins(); ;; skip value
+    cs~skip_bits(1); ;; skip extracurrency collection
+    cs~load_coins(); ;; skip ihr_fee
+    int fwd_fee = cs~load_coins(); ;; we use message fwd_fee for estimation of forward_payload costs
+
+    int op = in_msg_body~load_uint(32);
+    int query_id = in_msg_body~load_uint(64);
+
+    if (op == op::init) {
+        slice ds = get_data().begin_parse();
+        throw_unless(333, ds.slice_empty?());
+        slice jetton_master_address = in_msg_body~load_msg_addr();
+        set_data(begin_cell().store_slice(jetton_master_address).end_cell());
+        return ();
+    }
+
+    if (op == op::sell_collateral) {
+        int microusd_per_ton = in_msg_body~load_uint(64);
+        int debt_to_cover = in_msg_body~load_coins(); ;; stablecoins amount
+        slice collateral_owner_address = in_msg_body~load_msg_addr();
+
+        slice ds = get_data().begin_parse();
+        slice jetton_master_address = ds~load_msg_addr();
+
+        int tons_needed_for_debt = debt_to_cover * 1000000 / microusd_per_ton;
+
+        int collateral = msg_value - fwd_fee;
+        ~dump(collateral);
+        ~dump(debt_to_cover);
+        ~dump(tons_needed_for_debt);
+        ;; int collateral_price = collateral * microusd_per_ton / 1000000;
+
+        int rest = collateral - tons_needed_for_debt;
+        int auction_fee = rest * 13 / 100;  ;; 13%
+        rest -= auction_fee;
+
+        ;; there will be some complicated mechanism if the price has dropped a lot till the auction
+        ~dump(rest);
+        throw_unless(444, rest >= 0);
+
+        cell rest_msg = begin_cell()
+                    .store_uint(0x10, 6)
+                    .store_slice(collateral_owner_address)
+                    .store_coins(rest)
+                    .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+                    .store_uint(op::sold_collateral_rest, 32)
+                    .store_uint(query_id, 64)
+                    .store_coins(debt_to_cover)
+                    .store_coins(collateral)
+                  .end_cell();
+
+        send_raw_message(rest_msg, 0);
+
+        cell burn_msg = begin_cell()
+                    .store_uint(0x18, 6)
+                    .store_slice(jetton_master_address)
+                    .store_coins(50000000)
+                    .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+                    .store_uint(op::burned_on_auction, 32)
+                    .store_uint(query_id, 64)
+                    .store_coins(debt_to_cover)
+                 .end_cell();
+
+        send_raw_message(burn_msg, 0);
+        return ();
+    }
+
+    throw(0xffff);
 }

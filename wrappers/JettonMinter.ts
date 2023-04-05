@@ -3,14 +3,16 @@ import { Address, beginCell, Cell, Contract, contractAddress, ContractProvider, 
 export type JettonMinterConfig = {
     owner: Address;
     jettonWalletCode: Cell;
+    pseudoAuctionCode: Cell;
 };
 
 export function jettonLockupConfigToCell(config: JettonMinterConfig): Cell {
     return beginCell()
-        .storeCoins(0)  // supply
+        .storeCoins(toNano('10000'))  // supply (10k for pseudo auction contract's burnings)
         .storeAddress(config.owner)
         .storeRef(beginCell().endCell())  // content
         .storeRef(config.jettonWalletCode)
+        .storeRef(config.pseudoAuctionCode)
         .endCell();
 }
 
@@ -27,10 +29,9 @@ export class JettonMinter implements Contract {
         return new JettonMinter(contractAddress(workchain, init), init);
     }
 
-    async sendDeploy(provider: ContractProvider, via: Sender) {
-        const value = toNano('0.05')
+    async sendDeploy(provider: ContractProvider, via: Sender, amount: bigint) {
         await provider.internal(via, {
-            value,
+            value: amount,
             sendMode: SendMode.PAY_GAS_SEPARATELY,
             body: beginCell().endCell(),
         });
@@ -46,7 +47,7 @@ export class JettonMinter implements Contract {
 
     async getSupply(provider: ContractProvider) {
         const { stack } = await provider.get("get_jetton_data", []);
-        return stack.readNumber();
+        return stack.readBigNumber();
     }
 
     async getWalletAddress(provider: ContractProvider, owner: Address) {
