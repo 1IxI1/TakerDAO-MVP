@@ -344,3 +344,7 @@ const int jetton_fee_3 = 10000000; ;; 0.01 TON
     (slice vault, int there?) = vaults.udict_get?(256, address_hashpart);
     return (there?, vault);
 }
+
+(int, int, int, cell, slice, slice, cell, cell) get_all_contract_data() method_id {
+    return load_data();
+}

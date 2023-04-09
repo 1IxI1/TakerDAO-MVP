@@ -1,4 +1,4 @@
-import { Address, beginCell, Cell, Contract, contractAddress, ContractProvider, Sender, SendMode, TupleBuilder, toNano } from 'ton-core';
+import { Address, beginCell, Cell, Contract, contractAddress, ContractProvider, Sender, SendMode, TupleBuilder, toNano, Dictionary, DictionaryValue } from 'ton-core';
 
 // storage#_ microusd_per_ton: uint32  // 2.3232 USD -> 2323200
 //     min_cr: uint16  // 1.5 -> 1500
@@ -29,7 +29,6 @@ export type Vault = {
 };
 
 
-
 export function formatPrice(price: number): number {
     // USD per TON -> microUSD per TON
     return Math.round(price * 10**6);
@@ -49,6 +48,27 @@ export function parseCollateralRatio(ratio: number): number {
     // 1500 -> 1.5
     return ratio / 10**3;
 }
+
+export type VaultValue = {
+    dcr: number,
+    collateral: bigint,
+    debt: bigint
+};
+
+export const VaultVaules: DictionaryValue<VaultValue> = {
+    serialize: (src, builder) => {
+        builder.storeUint(formatCollateralRatio(src.dcr), 16);
+        builder.storeCoins(src.collateral);
+        builder.storeCoins(src.debt);
+    },
+    parse: (src) => {
+        return {
+            dcr: parseCollateralRatio(src.loadUint(16)),
+            collateral: src.loadCoins(),
+            debt: src.loadCoins()
+        };
+    }
+};
 
 export function mainConfigToCell(config: MainConfig): Cell {
     return beginCell()
@@ -102,7 +122,7 @@ export class Main implements Contract {
 
     async sendUpdatePrice(provider: ContractProvider, via: Sender, price: number, queryId = 0) {
         await provider.internal(via, {
-            value: toNano('0.1'),
+            value: toNano('0.02'),
             sendMode: SendMode.PAY_GAS_SEPARATELY,
             body: beginCell()
                     .storeUint(0x1, 32) // OP update_price
@@ -132,6 +152,34 @@ export class Main implements Contract {
             dcr: parseCollateralRatio(dcr),
             collateral: collateral,
             debt: debt,
+        };
+    }
+
+    async getContractTonPrice(provider: ContractProvider): Promise<number> {
+        const { stack } = await provider.get("get_all_contract_data", []);
+        return parsePrice(stack.readNumber());
+    }
+
+    async getContractData(provider: ContractProvider) {
+        const { stack } = await provider.get("get_all_contract_data", []);
+        const tonPrice = parsePrice(stack.readNumber());
+        const minCollateralRatio = parseCollateralRatio(stack.readNumber());
+        const lastUpdate = stack.readNumber();
+        const vaultsMaybeCell = stack.readCellOpt();
+        const vaults = Dictionary.loadDirect(Dictionary.Keys.BigInt(256), VaultVaules, vaultsMaybeCell);
+        const oracle = stack.readAddress();
+        const jettonMasterAddress = stack.readAddress();
+        const jettonWalletCode = stack.readCell();
+        const pseudoAuctionCode = stack.readCell();
+        return {
+            tonPrice,
+            minCollateralRatio,
+            lastUpdate,
+            vaults,
+            oracle,
+            jettonMasterAddress,
+            jettonWalletCode,
+            pseudoAuctionCode,
         };
     }
 }

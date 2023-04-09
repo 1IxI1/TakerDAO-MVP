@@ -83,6 +83,6 @@
     throw(0xffff);
 }
 
-() just_nothing() method_id (0x123) {
+() just_nothing() method_id (0x125) {
     return ();
 }

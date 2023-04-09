@@ -8,9 +8,6 @@ export async function run(provider: NetworkProvider, args: string[]) {
     const ui = provider.ui();
 
     const address = Address.parse(args.length > 0 ? args[0] : await ui.input('Jetton master address'));
-    const stableTokens = toNano(args.length > 1 ? args[1] : await ui.input('Stable tokens to repay'));
-    const wantedCollateral = toNano(args.length > 2 ? args[2] : await ui.input('Wanted collateral'));
-
     if (!(await provider.isContractDeployed(address))) {
         ui.write(`Error: Contract at address ${address} is not deployed!`);
         return;
@@ -20,17 +17,25 @@ export async function run(provider: NetworkProvider, args: string[]) {
 
     const mainAddress = await jettonMinter.getOwner();
 
-    const jettonWalletAddress = await jettonMinter.getWalletAddress(provider.sender().address!);
-
-    const jettonWallet = provider.open(JettonWallet.createFromAddress(jettonWalletAddress));
-
     const main = provider.open(Main.createFromAddress(mainAddress));
 
     let vault = await main.getVault(provider.sender().address!);
+
+    if (!vault) {
+        ui.write(`Error: You have no debt!`);
+        return;
+    }
+
+    const stableTokens = toNano(args.length > 1 ? args[1] : await ui.input(`Stable tokens to repay (max ${vault.debt})`));
+    const wantedCollateral = toNano(args.length > 2 ? args[2] : await ui.input(`Wanted collateral (max ${vault.collateral})`));
+
     ui.write(`Vault before: ${vault}`);
     ui.write(`DCR: ${vault?.dcr}`);
     ui.write(`Debt: ${vault?.debt}`);
     ui.write(`Collateral: ${vault?.collateral}`);
+
+    const jettonWalletAddress = await jettonMinter.getWalletAddress(provider.sender().address!);
+    const jettonWallet = provider.open(JettonWallet.createFromAddress(jettonWalletAddress));
     
     await jettonWallet.sendRepayRequest(provider.sender(), stableTokens, wantedCollateral, toNano('0.05'));
 

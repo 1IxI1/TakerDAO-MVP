@@ -5,8 +5,7 @@ import { JettonWallet } from '../wrappers/JettonWallet';
 import { PseudoAuction } from '../wrappers/PseudoAuction';
 import { compile, NetworkProvider } from '@ton-community/blueprint';
 
-const oracleAddress = Address.parse('EQBlgiyiXD6R6r7zzzlvAsaDqWsjQyt0E_s15khic_K0DLeB')
-const ownerAddress = Address.parse('EQC4lxeD8zFIwAzeDdgimJisBDxPQG0qHx5BzwkAc9ocW-Mf')
+const oracleAddress = Address.parse('EQDP4sDwGQ8BMi4xKBLrJFnCs7_53XJ059Fg2w0dzIJgMqh0')
 
 export async function run(provider: NetworkProvider) {
     const mainCode = await compile('Main');
