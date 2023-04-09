@@ -24,9 +24,11 @@ return_collateral query_id: uint64
     = InternalMsgBody;
 
 repay_decline query_id: uint64
-    error_code: uint32
+    error_code: uint8
     jetton_amount: Coins
     = InternalMsgBody;
+
+repay_declined_notification query_id: uint64 error_code: uint8 = InternalMsgBody;
 
 borrow query_id: uint64 jetton_amount: Coins = InternalMsgBody;
 
