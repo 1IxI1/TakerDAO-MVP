@@ -1,4 +1,4 @@
-import { Address, toNano } from 'ton-core';
+import { Address, toNano, fromNano } from 'ton-core';
 import { Main } from '../wrappers/Main';
 import { JettonWallet } from '../wrappers/JettonWallet';
 import { JettonMinter } from '../wrappers/JettonMinter';
@@ -7,17 +7,16 @@ import { NetworkProvider, sleep } from '@ton-community/blueprint';
 export async function run(provider: NetworkProvider, args: string[]) {
     const ui = provider.ui();
 
-    const address = Address.parse(args.length > 0 ? args[0] : await ui.input('Jetton master address'));
+    const address = Address.parse(args.length > 0 ? args[0] : await ui.input('Main contract address'));
     if (!(await provider.isContractDeployed(address))) {
         ui.write(`Error: Contract at address ${address} is not deployed!`);
         return;
     }
 
-    const jettonMinter = provider.open(JettonMinter.createFromAddress(address));
+    const main = provider.open(Main.createFromAddress(address));
+    const contractData = await main.getContractData();
 
-    const mainAddress = await jettonMinter.getOwner();
-
-    const main = provider.open(Main.createFromAddress(mainAddress));
+    const jettonMinter = provider.open(JettonMinter.createFromAddress(contractData.jettonMasterAddress));
 
     let vault = await main.getVault(provider.sender().address!);
 
@@ -26,8 +25,8 @@ export async function run(provider: NetworkProvider, args: string[]) {
         return;
     }
 
-    const stableTokens = toNano(args.length > 1 ? args[1] : await ui.input(`Stable tokens to repay (max ${vault.debt})`));
-    const wantedCollateral = toNano(args.length > 2 ? args[2] : await ui.input(`Wanted collateral (max ${vault.collateral})`));
+    const stableTokens = toNano(args.length > 1 ? args[1] : await ui.input(`Stable tokens to repay (max ${fromNano(vault.debt)})`));
+    const wantedCollateral = toNano(args.length > 2 ? args[2] : await ui.input(`Wanted collateral (max ${fromNano(vault.collateral)})`));
 
     ui.write(`Vault before: ${vault}`);
     ui.write(`DCR: ${vault?.dcr}`);
