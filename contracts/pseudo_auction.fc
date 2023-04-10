@@ -83,6 +83,9 @@
     throw(0xffff);
 }
 
+;; just by changing this method id the whole address of a contract will be changed.
+;; needed because this contract is very simple and unchanged while others tested in
+;; testnet need some new instances of this contract every time.
 () just_nothing() method_id (0x125) {
     return ();
 }
